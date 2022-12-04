@@ -1,4 +1,6 @@
-﻿using ParrelSync;
+﻿#if UNITY_EDITOR
+using ParrelSync;
+#endif
 using System;
 using System.Collections;
 using System.Collections.Generic;
@@ -7,12 +9,23 @@ using Unity.Services.Authentication;
 using Unity.Services.Core;
 using Unity.Services.Lobbies;
 using Unity.Services.Lobbies.Models;
+using Unity.Services.Relay;
+using Unity.Services.Relay.Models;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class ServiceController : MonoSingleton<ServiceController>
 {
     public static bool IsInitialized = false;
 
+    public static RelayHostData RelayHostData;
+    public static RelayJoinData RelayJoinData;
+
+    public const string LobbySceneName = "Lobby";
+    public const string GameplaySceneName = "Gameplay";
+
+    public const string LobbyPlayingDataKey = "LobbyPlaying";
+    public const string JoinCodeDataKey = "JoinCode";
     public const string PlayerNameDataKey = "PlayerName";
     public const string PlayerColorDataKey = "PlayerColor";
 
@@ -42,7 +55,18 @@ public class ServiceController : MonoSingleton<ServiceController>
         options.SetProfile(ClonesManager.GetCurrentProject().name);
         await UnityServices.InitializeAsync(options);
 #else
-        await UnityServices.InitializeAsync();
+        var options = new InitializationOptions();
+        options.SetProfile(PlayerName);
+        await UnityServices.InitializeAsync(options);
+#endif
+
+#if UNITY_EDITOR
+        if (ClonesManager.IsClone())
+        {
+            Debug.Log("This is a clone project.");
+            string customArgument = ParrelSync.ClonesManager.GetArgument();
+            AuthenticationService.Instance.SwitchProfile($"Clone_{customArgument}_Profile");
+        }
 #endif
 
         // đăng nhập ẩn danh và lấy ra player id
@@ -53,6 +77,8 @@ public class ServiceController : MonoSingleton<ServiceController>
         await AuthenticationService.Instance.SignInAnonymouslyAsync();
 
         IsInitialized = true;
+
+        onLobbyUpdated += (_) => CheckJoinedLobbyPlayingAndStartGameplay();
     }
 
     float heartBeatTimer = 0f;
@@ -100,7 +126,6 @@ public class ServiceController : MonoSingleton<ServiceController>
             }
         }
     }
-
     public bool IsPlayerHostOfJoinedLobby => joinedLobby.HostId == PlayerId;
 
     public void UpdatePlayerData(string playerName, string playerColor)
@@ -152,10 +177,27 @@ public class ServiceController : MonoSingleton<ServiceController>
     {
         try
         {
+            Allocation allocation = await Relay.Instance.CreateAllocationAsync(4);
+            RelayHostData = new RelayHostData
+            {
+                Key = allocation.Key,
+                Port = (ushort)allocation.RelayServer.Port,
+                AllocationID = allocation.AllocationId,
+                AllocationIDBytes = allocation.AllocationIdBytes,
+                ConnectionData = allocation.ConnectionData,
+                IPv4Address = allocation.RelayServer.IpV4
+            };
+            RelayHostData.JoinCode = await Relay.Instance.GetJoinCodeAsync(allocation.AllocationId);
+
             CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
             {
                 IsPrivate = isPrivate,
-                Player = CreatePlayerDataForLobby()
+                Player = CreatePlayerDataForLobby(),
+                Data = new Dictionary<string, DataObject>
+                {
+                    { JoinCodeDataKey, new DataObject (DataObject.VisibilityOptions.Member, RelayHostData.JoinCode) },
+                    { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") }
+                }
             };
 
             Lobby lobby = await LobbyService.Instance.CreateLobbyAsync(lobbyName, maxPlayers, createLobbyOptions);
@@ -177,8 +219,20 @@ public class ServiceController : MonoSingleton<ServiceController>
             {
                 Player = CreatePlayerDataForLobby()
             };
-            Lobby joinedLobby = await Lobbies.Instance.JoinLobbyByIdAsync(lobby.Id, joinLobbyByIdOptions);
-            ServiceController.joinedLobby = joinedLobby;
+            joinedLobby = await Lobbies.Instance.JoinLobbyByIdAsync(lobby.Id, joinLobbyByIdOptions);
+
+            string joinCode = joinedLobby.Data[JoinCodeDataKey].Value;
+            JoinAllocation allocation = await Relay.Instance.JoinAllocationAsync(joinCode);
+            RelayJoinData = new RelayJoinData
+            {
+                Key = allocation.Key,
+                Port = (ushort)allocation.RelayServer.Port,
+                AllocationID = allocation.AllocationId,
+                AllocationIDBytes = allocation.AllocationIdBytes,
+                ConnectionData = allocation.ConnectionData,
+                HostConnectionData = allocation.HostConnectionData,
+                IPv4Address = allocation.RelayServer.IpV4
+            };
 
             onJoinedLobby?.Invoke(joinedLobby);
         }
@@ -244,6 +298,29 @@ public class ServiceController : MonoSingleton<ServiceController>
         }
     }
 
+    public async void StartGame()
+    {
+        joinedLobby = await Lobbies.Instance.UpdateLobbyAsync(joinedLobby.Id, new UpdateLobbyOptions
+        {
+            Data = new Dictionary<string, DataObject>
+            {
+                { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "1") }
+            }
+        });
+
+        if (SceneManager.GetActiveScene().name == LobbySceneName)
+            SceneManager.LoadScene(GameplaySceneName);
+    }
+
+    private void CheckJoinedLobbyPlayingAndStartGameplay()
+    {
+        if (joinedLobby.Data[LobbyPlayingDataKey].Value == "1")
+        {
+            if (SceneManager.GetActiveScene().name == LobbySceneName)
+                SceneManager.LoadScene(GameplaySceneName);
+        }
+    }
+
     public async Task LeaveJoinedLobby()
     {
         try
@@ -266,4 +343,26 @@ public class ServiceController : MonoSingleton<ServiceController>
             await LeaveJoinedLobby();
         }
     }
+}
+
+public struct RelayHostData
+{
+    public string JoinCode;
+    public string IPv4Address;
+    public ushort Port;
+    public Guid AllocationID;
+    public byte[] AllocationIDBytes;
+    public byte[] ConnectionData;
+    public byte[] Key;
+}
+public struct RelayJoinData
+{
+    public string JoinCode;
+    public string IPv4Address;
+    public ushort Port;
+    public Guid AllocationID;
+    public byte[] AllocationIDBytes;
+    public byte[] ConnectionData;
+    public byte[] HostConnectionData;
+    public byte[] Key;
 }

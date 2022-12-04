@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using TMPro;
 using Unity.Services.Lobbies.Models;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 public class LobbyScreenController : MonoBehaviour
 {
@@ -15,7 +16,11 @@ public class LobbyScreenController : MonoBehaviour
 
     private void Start()
     {
-        ServiceController.Instance.onLobbyUpdated += RefreshScreen;
+        ServiceController.Instance.onLobbyUpdated += (lobby) =>
+        {
+            if (SceneManager.GetActiveScene().name == ServiceController.LobbySceneName)
+                RefreshScreen(lobby);
+        };
     }
 
     public void Show(Lobby lobby)
@@ -61,6 +66,7 @@ public class LobbyScreenController : MonoBehaviour
 
     public void StartOnClick()
     {
-
+        if (ServiceController.Instance.IsPlayerHostOfJoinedLobby)
+            ServiceController.Instance.StartGame();
     }
 }

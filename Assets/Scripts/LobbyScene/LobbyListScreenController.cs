@@ -1,5 +1,4 @@
-﻿using ParrelSync;
-using QFSW.QC;
+﻿using QFSW.QC;
 using System;
 using System.Collections;
 using System.Collections.Generic;

@@ -1,4 +1,6 @@
-﻿using ParrelSync;
+﻿#if UNITY_EDITOR
+using ParrelSync;
+#endif
 using QFSW.QC;
 using System.Collections;
 using System.Collections.Generic;
@@ -19,10 +21,13 @@ public class TestLobby : MonoBehaviour
 
     private async void Start()
     {
-        //Set up UnityServices
+#if UNITY_EDITOR
         var options = new InitializationOptions();
         options.SetProfile(ClonesManager.GetCurrentProject().name);
         await UnityServices.InitializeAsync(options);
+#else
+        await UnityServices.InitializeAsync();
+#endif
 
         // đăng nhập ẩn danh và lấy ra player id
         AuthenticationService.Instance.SignedIn += () =>
