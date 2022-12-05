@@ -36,21 +36,10 @@ public class GameplayController : OneSceneMonoSingleton<GameplayController>
 
     void Start()
     {
-        NetworkManager.Singleton.OnClientConnectedCallback += (id) =>
-        {
-            if (NetworkManager.Singleton.IsHost)
-            {
-                if (NetworkManager.Singleton.LocalClientId == id)
-                {
-                    _bulletsManager = Instantiate(BulletsManagerPrefab);
-                    _bulletsManager.NetworkObject.Spawn(true);
+        IsGameEnded = false;
+        NetworkPlayersManager.PlayerDic.Clear();
 
-                    _playersManager = Instantiate(PlayersManagerPrefab);
-                    _playersManager.NetworkObject.Spawn(true);
-                }
-            }
-            Debug.Log("Player with client id " + id + " joined");
-        };
+        NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
 
         if (ServiceController.Instance.IsPlayerHostOfJoinedLobby)
         {
@@ -62,6 +51,27 @@ public class GameplayController : OneSceneMonoSingleton<GameplayController>
         }
     }
 
+    void OnClientConnected(ulong id)
+    {
+        if (NetworkManager.Singleton.IsHost)
+        {
+            if (NetworkManager.Singleton.LocalClientId == id)
+            {
+                _bulletsManager = Instantiate(BulletsManagerPrefab);
+                _bulletsManager.NetworkObject.Spawn(true);
+
+                _playersManager = Instantiate(PlayersManagerPrefab);
+                _playersManager.NetworkObject.Spawn(true);
+            }
+        }
+        Debug.Log("Player with client id " + id + " joined");
+    }
+
+    private void OnDestroy()
+    {
+        NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
+    }
+
     public void ShowEndGamePanel(string winnerName)
     {
         IsGameEnded = true;
@@ -71,7 +81,7 @@ public class GameplayController : OneSceneMonoSingleton<GameplayController>
     public void GoBackToLobby()
     {
         NetworkManager.Singleton.Shutdown();
-        PlayerPrefs.SetInt(ServiceController.BackFromGameplayPlayerPrefKey, 1);
+        ServiceController.IsBackFromGameplay = true;
         UnityEngine.SceneManagement.SceneManager.LoadScene(ServiceController.LobbySceneName);
     }
 }

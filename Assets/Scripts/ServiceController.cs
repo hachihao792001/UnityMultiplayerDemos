@@ -26,10 +26,8 @@ public class ServiceController : MonoSingleton<ServiceController>
     public const string LobbySceneName = "Lobby";
     public const string GameplaySceneName = "Gameplay";
 
-    public const string BackFromGameplayPlayerPrefKey = "BackFromGameplay";
-
     public const string LobbyStartPlayingDataKey = "StartPlaying";
-    public const string LobbyPlayingDataKey = "LobbyPlaying";
+    public const string LobbyStartedDataKey = "LobbyStarted";
     public const string JoinCodeDataKey = "JoinCode";
     public const string PlayerNameDataKey = "PlayerName";
     public const string PlayerColorDataKey = "PlayerColor";
@@ -46,13 +44,14 @@ public class ServiceController : MonoSingleton<ServiceController>
     public Action<Lobby> onLobbyUpdated;
     public Action<Lobby> onLobbyStarting;
 
-    protected override void Awake()
+    public static bool IsBackFromGameplay;
+
+    protected override void SingletonAwake()
     {
-        base.Awake();
         PlayerName = "Player" + UnityEngine.Random.Range(10, 100);
         PlayerColor = "FF0000";
 
-        PlayerPrefs.SetInt(BackFromGameplayPlayerPrefKey, 0);
+        IsBackFromGameplay = false;
     }
 
     private async void Start()
@@ -89,7 +88,7 @@ public class ServiceController : MonoSingleton<ServiceController>
         onLobbyUpdated += (_) =>
         {
             CheckJoinedLobbyStartPlayingAndShowStartingScreen();
-            CheckJoinedLobbyPlayingAndStartGameplay();
+            CheckJoinedLobbyStartedAndStartGameplay();
         };
     }
 
@@ -196,7 +195,7 @@ public class ServiceController : MonoSingleton<ServiceController>
                 Data = new Dictionary<string, DataObject>
                 {
                     { JoinCodeDataKey, new DataObject (DataObject.VisibilityOptions.Member, "") },
-                    { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
+                    { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
                     { LobbyStartPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") }
                 }
             };
@@ -290,7 +289,7 @@ public class ServiceController : MonoSingleton<ServiceController>
     {
         if (SceneManager.GetActiveScene().name == LobbySceneName)
         {
-            // nói cho các player khác biết là nút start mới được bấm và đang vào game
+            // nói cho các player khác biết là nút start mới được bấm và đang vào game (để hiện màn hình Starting...)
             joinedLobby = await Lobbies.Instance.UpdateLobbyAsync(joinedLobby.Id, new UpdateLobbyOptions
             {
                 Data = new Dictionary<string, DataObject>
@@ -320,7 +319,7 @@ public class ServiceController : MonoSingleton<ServiceController>
                 Data = new Dictionary<string, DataObject>
                 {
                     { JoinCodeDataKey, new DataObject (DataObject.VisibilityOptions.Member, RelayHostData.JoinCode) },
-                    { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "1") },
+                    { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Public, "1") },
                     { LobbyStartPlayingDataKey, new DataObject (DataObject.VisibilityOptions.Public, "0") },
                 }
             });
@@ -333,12 +332,22 @@ public class ServiceController : MonoSingleton<ServiceController>
                 RelayHostData.ConnectionData);
 
             SceneManager.LoadScene(GameplaySceneName);
+
+            await Task.Delay(1500);
+            // set lại started thành 0 vì để khi player trở lại lobby từ gameplay thì ko bị ngay lập tức đi vào lại
+            joinedLobby = await Lobbies.Instance.UpdateLobbyAsync(joinedLobby.Id, new UpdateLobbyOptions
+            {
+                Data = new Dictionary<string, DataObject>
+                {
+                    { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
+                }
+            });
         }
     }
 
-    private async void CheckJoinedLobbyPlayingAndStartGameplay()
+    private async void CheckJoinedLobbyStartedAndStartGameplay()
     {
-        if (PlayerPrefs.GetInt(BackFromGameplayPlayerPrefKey) == 0 && joinedLobby.Data[LobbyPlayingDataKey].Value == "1")
+        if (!IsBackFromGameplay && joinedLobby.Data[LobbyStartedDataKey].Value == "1")
         {
             if (SceneManager.GetActiveScene().name == LobbySceneName)
             {
@@ -376,7 +385,7 @@ public class ServiceController : MonoSingleton<ServiceController>
         {
             Data = new Dictionary<string, DataObject>
             {
-                { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
+                { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
             }
         });
     }

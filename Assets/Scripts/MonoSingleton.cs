@@ -23,15 +23,18 @@ public class MonoSingleton<T> : MonoBehaviour where T : MonoBehaviour
         DontDestroyOnLoad(s_singleton);
     }
 
-    protected virtual void Awake()
+    protected void Awake()
     {
         if (s_singleton == null)
         {
             AssignSingleton((T)(MonoBehaviour)this);
+            SingletonAwake();
         }
         else if (s_singleton != this)
         {
             Destroy(gameObject);
         }
     }
+
+    protected virtual void SingletonAwake() { }
 }

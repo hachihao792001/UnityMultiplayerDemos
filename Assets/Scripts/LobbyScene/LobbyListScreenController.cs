@@ -25,11 +25,22 @@ public class LobbyListScreenController : MonoBehaviour
 
     private void Start()
     {
-        ServiceController.Instance.onLobbyCreated += (_) => RefreshLobbiesListUI();
+        ServiceController.Instance.onLobbyCreated += OnLobbyCreated;
         ServiceController.Instance.onJoinedLobby += OnJoinedLobby;
         ServiceController.Instance.onPlayerDataUpdated += UpdatePlayerDataUI;
 
         UpdatePlayerDataUI();
+    }
+    private void OnDestroy()
+    {
+        ServiceController.Instance.onLobbyCreated -= OnLobbyCreated;
+        ServiceController.Instance.onJoinedLobby -= OnJoinedLobby;
+        ServiceController.Instance.onPlayerDataUpdated -= UpdatePlayerDataUI;
+    }
+
+    void OnLobbyCreated(Lobby lobby)
+    {
+        RefreshLobbiesListUI();
     }
 
     void OnJoinedLobby(Lobby lobby)
@@ -43,16 +54,17 @@ public class LobbyListScreenController : MonoBehaviour
         if (ServiceController.IsInitialized)
             RefreshLobbiesListUI();
 
-        CheckBackFromLobby();
+        CheckBackFromGameplay();
     }
-    async void CheckBackFromLobby()
+    async void CheckBackFromGameplay()
     {
-        if (PlayerPrefs.GetInt(ServiceController.BackFromGameplayPlayerPrefKey) == 1)
+        if (ServiceController.IsBackFromGameplay)
         {
             OnJoinedLobby(ServiceController.joinedLobby);
-            await ServiceController.Instance.JoinLobbyStopPlaying();
+            if (ServiceController.Instance.IsPlayerHostOfJoinedLobby)
+                await ServiceController.Instance.JoinLobbyStopPlaying();
 
-            PlayerPrefs.SetInt(ServiceController.BackFromGameplayPlayerPrefKey, 0);
+            ServiceController.IsBackFromGameplay = false;
         }
     }
 

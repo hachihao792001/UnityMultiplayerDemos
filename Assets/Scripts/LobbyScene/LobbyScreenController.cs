@@ -18,16 +18,23 @@ public class LobbyScreenController : MonoBehaviour
 
     private void Start()
     {
-        ServiceController.Instance.onLobbyUpdated += (lobby) =>
-        {
-            if (SceneManager.GetActiveScene().name == ServiceController.LobbySceneName)
-                RefreshScreen(lobby);
-        };
+        ServiceController.Instance.onLobbyUpdated += OnLobbyUpdated;
+        ServiceController.Instance.onLobbyStarting += OnLobbyStarting;
+    }
 
-        ServiceController.Instance.onLobbyStarting += (lobby) =>
-        {
-            _startingPanel.SetActive(true);
-        };
+    void OnLobbyUpdated(Lobby lobby)
+    {
+        if (SceneManager.GetActiveScene().name == ServiceController.LobbySceneName)
+            RefreshScreen(lobby);
+    }
+    void OnLobbyStarting(Lobby lobby)
+    {
+        _startingPanel.SetActive(true);
+    }
+    private void OnDestroy()
+    {
+        ServiceController.Instance.onLobbyUpdated -= OnLobbyUpdated;
+        ServiceController.Instance.onLobbyStarting -= OnLobbyStarting;
     }
 
     public void Show(Lobby lobby)

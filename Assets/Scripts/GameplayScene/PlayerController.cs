@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.Generic;
 using TMPro;
 using Unity.Collections;
@@ -24,8 +24,10 @@ public class PlayerController : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
-        _currentHealth.OnValueChanged += OnHealthUpdate;
+        _currentHealth.OnValueChanged = OnHealthUpdate;
         _currentHealth.Value = _fullHealth;
+
+        _rb.AddForce(Vector3.forward * 100);    // tách các người chơi ra
     }
 
     public void UpdatePlayerData(string name, string hexColor)

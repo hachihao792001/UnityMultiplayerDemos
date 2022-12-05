@@ -23,6 +23,7 @@ public class NetworkPlayersManager : NetworkBehaviour
 
     public override void OnNetworkSpawn()
     {
+        PlayerDic.Clear();
         OnClientConnectedServerRpc(NetworkManager.Singleton.LocalClientId, ServiceController.PlayerName, ServiceController.PlayerColor);
     }
 
