@@ -5,6 +5,8 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Unity.Netcode;
+using Unity.Netcode.Transports.UTP;
 using Unity.Services.Authentication;
 using Unity.Services.Core;
 using Unity.Services.Lobbies;
@@ -24,6 +26,9 @@ public class ServiceController : MonoSingleton<ServiceController>
     public const string LobbySceneName = "Lobby";
     public const string GameplaySceneName = "Gameplay";
 
+    public const string BackFromGameplayPlayerPrefKey = "BackFromGameplay";
+
+    public const string LobbyStartPlayingDataKey = "StartPlaying";
     public const string LobbyPlayingDataKey = "LobbyPlaying";
     public const string JoinCodeDataKey = "JoinCode";
     public const string PlayerNameDataKey = "PlayerName";
@@ -39,12 +44,15 @@ public class ServiceController : MonoSingleton<ServiceController>
     public Action<Lobby> onJoinedLobby;
     public Action onLeaveJoinedLobby;
     public Action<Lobby> onLobbyUpdated;
+    public Action<Lobby> onLobbyStarting;
 
     protected override void Awake()
     {
         base.Awake();
         PlayerName = "Player" + UnityEngine.Random.Range(10, 100);
         PlayerColor = "FF0000";
+
+        PlayerPrefs.SetInt(BackFromGameplayPlayerPrefKey, 0);
     }
 
     private async void Start()
@@ -78,7 +86,11 @@ public class ServiceController : MonoSingleton<ServiceController>
 
         IsInitialized = true;
 
-        onLobbyUpdated += (_) => CheckJoinedLobbyPlayingAndStartGameplay();
+        onLobbyUpdated += (_) =>
+        {
+            CheckJoinedLobbyStartPlayingAndShowStartingScreen();
+            CheckJoinedLobbyPlayingAndStartGameplay();
+        };
     }
 
     float heartBeatTimer = 0f;
@@ -177,26 +189,15 @@ public class ServiceController : MonoSingleton<ServiceController>
     {
         try
         {
-            Allocation allocation = await Relay.Instance.CreateAllocationAsync(4);
-            RelayHostData = new RelayHostData
-            {
-                Key = allocation.Key,
-                Port = (ushort)allocation.RelayServer.Port,
-                AllocationID = allocation.AllocationId,
-                AllocationIDBytes = allocation.AllocationIdBytes,
-                ConnectionData = allocation.ConnectionData,
-                IPv4Address = allocation.RelayServer.IpV4
-            };
-            RelayHostData.JoinCode = await Relay.Instance.GetJoinCodeAsync(allocation.AllocationId);
-
             CreateLobbyOptions createLobbyOptions = new CreateLobbyOptions
             {
                 IsPrivate = isPrivate,
                 Player = CreatePlayerDataForLobby(),
                 Data = new Dictionary<string, DataObject>
                 {
-                    { JoinCodeDataKey, new DataObject (DataObject.VisibilityOptions.Member, RelayHostData.JoinCode) },
-                    { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") }
+                    { JoinCodeDataKey, new DataObject (DataObject.VisibilityOptions.Member, "") },
+                    { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
+                    { LobbyStartPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") }
                 }
             };
 
@@ -221,22 +222,9 @@ public class ServiceController : MonoSingleton<ServiceController>
             };
             joinedLobby = await Lobbies.Instance.JoinLobbyByIdAsync(lobby.Id, joinLobbyByIdOptions);
 
-            string joinCode = joinedLobby.Data[JoinCodeDataKey].Value;
-            JoinAllocation allocation = await Relay.Instance.JoinAllocationAsync(joinCode);
-            RelayJoinData = new RelayJoinData
-            {
-                Key = allocation.Key,
-                Port = (ushort)allocation.RelayServer.Port,
-                AllocationID = allocation.AllocationId,
-                AllocationIDBytes = allocation.AllocationIdBytes,
-                ConnectionData = allocation.ConnectionData,
-                HostConnectionData = allocation.HostConnectionData,
-                IPv4Address = allocation.RelayServer.IpV4
-            };
-
             onJoinedLobby?.Invoke(joinedLobby);
         }
-        catch (LobbyServiceException e)
+        catch (Exception e)
         {
             Debug.Log(e);
         }
@@ -300,24 +288,107 @@ public class ServiceController : MonoSingleton<ServiceController>
 
     public async void StartGame()
     {
+        if (SceneManager.GetActiveScene().name == LobbySceneName)
+        {
+            // nói cho các player khác biết là nút start mới được bấm và đang vào game
+            joinedLobby = await Lobbies.Instance.UpdateLobbyAsync(joinedLobby.Id, new UpdateLobbyOptions
+            {
+                Data = new Dictionary<string, DataObject>
+                {
+                    { LobbyStartPlayingDataKey, new DataObject (DataObject.VisibilityOptions.Public, "1") },
+                }
+            });
+
+            // tạo allocation cho relay
+            Debug.Log("Creating allocation...");
+            Allocation allocation = await RelayService.Instance.CreateAllocationAsync(4);
+            RelayHostData = new RelayHostData
+            {
+                Key = allocation.Key,
+                Port = (ushort)allocation.RelayServer.Port,
+                AllocationID = allocation.AllocationId,
+                AllocationIDBytes = allocation.AllocationIdBytes,
+                ConnectionData = allocation.ConnectionData,
+                IPv4Address = allocation.RelayServer.IpV4
+            };
+            RelayHostData.JoinCode = await RelayService.Instance.GetJoinCodeAsync(allocation.AllocationId);
+            Debug.Log("Created allocation with join code " + RelayHostData.JoinCode);
+
+            // nói cho các player khác biết là lobby đã vào game
+            joinedLobby = await Lobbies.Instance.UpdateLobbyAsync(joinedLobby.Id, new UpdateLobbyOptions
+            {
+                Data = new Dictionary<string, DataObject>
+                {
+                    { JoinCodeDataKey, new DataObject (DataObject.VisibilityOptions.Member, RelayHostData.JoinCode) },
+                    { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "1") },
+                    { LobbyStartPlayingDataKey, new DataObject (DataObject.VisibilityOptions.Public, "0") },
+                }
+            });
+
+            NetworkManager.Singleton.GetComponent<UnityTransport>().SetRelayServerData(
+                RelayHostData.IPv4Address,
+                RelayHostData.Port,
+                RelayHostData.AllocationIDBytes,
+                RelayHostData.Key,
+                RelayHostData.ConnectionData);
+
+            SceneManager.LoadScene(GameplaySceneName);
+        }
+    }
+
+    private async void CheckJoinedLobbyPlayingAndStartGameplay()
+    {
+        if (PlayerPrefs.GetInt(BackFromGameplayPlayerPrefKey) == 0 && joinedLobby.Data[LobbyPlayingDataKey].Value == "1")
+        {
+            if (SceneManager.GetActiveScene().name == LobbySceneName)
+            {
+                string joinCode = joinedLobby.Data[JoinCodeDataKey].Value;
+                Debug.Log("Joining allocation with join code " + joinCode + "...");
+                JoinAllocation allocation = await RelayService.Instance.JoinAllocationAsync(joinCode);
+                Debug.Log("Join allocation with join code " + joinCode + " successfully");
+                RelayJoinData = new RelayJoinData
+                {
+                    Key = allocation.Key,
+                    Port = (ushort)allocation.RelayServer.Port,
+                    AllocationID = allocation.AllocationId,
+                    AllocationIDBytes = allocation.AllocationIdBytes,
+                    ConnectionData = allocation.ConnectionData,
+                    HostConnectionData = allocation.HostConnectionData,
+                    IPv4Address = allocation.RelayServer.IpV4
+                };
+
+                NetworkManager.Singleton.GetComponent<UnityTransport>().SetClientRelayData(
+                    RelayJoinData.IPv4Address,
+                    RelayJoinData.Port,
+                    RelayJoinData.AllocationIDBytes,
+                    RelayJoinData.Key,
+                    RelayJoinData.ConnectionData,
+                    RelayJoinData.HostConnectionData);
+
+                SceneManager.LoadScene(GameplaySceneName);
+            }
+        }
+    }
+
+    public async Task JoinLobbyStopPlaying()
+    {
         joinedLobby = await Lobbies.Instance.UpdateLobbyAsync(joinedLobby.Id, new UpdateLobbyOptions
         {
             Data = new Dictionary<string, DataObject>
             {
-                { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "1") }
+                { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
             }
         });
-
-        if (SceneManager.GetActiveScene().name == LobbySceneName)
-            SceneManager.LoadScene(GameplaySceneName);
     }
 
-    private void CheckJoinedLobbyPlayingAndStartGameplay()
+    private void CheckJoinedLobbyStartPlayingAndShowStartingScreen()
     {
-        if (joinedLobby.Data[LobbyPlayingDataKey].Value == "1")
+        if (joinedLobby.Data[LobbyStartPlayingDataKey].Value == "1")
         {
             if (SceneManager.GetActiveScene().name == LobbySceneName)
-                SceneManager.LoadScene(GameplaySceneName);
+            {
+                onLobbyStarting?.Invoke(joinedLobby);
+            }
         }
     }
 

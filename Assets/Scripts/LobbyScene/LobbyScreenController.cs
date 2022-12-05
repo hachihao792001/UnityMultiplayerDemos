@@ -13,6 +13,8 @@ public class LobbyScreenController : MonoBehaviour
     [SerializeField] PlayerItemController[] _playerItems;
     [SerializeField] GameObject _updateLobbyDataButton;
     [SerializeField] LobbyDataPanelController _lobbyDataPanel;
+    [SerializeField] GameObject _startGameButton;
+    [SerializeField] GameObject _startingPanel;
 
     private void Start()
     {
@@ -20,6 +22,11 @@ public class LobbyScreenController : MonoBehaviour
         {
             if (SceneManager.GetActiveScene().name == ServiceController.LobbySceneName)
                 RefreshScreen(lobby);
+        };
+
+        ServiceController.Instance.onLobbyStarting += (lobby) =>
+        {
+            _startingPanel.SetActive(true);
         };
     }
 
@@ -35,6 +42,7 @@ public class LobbyScreenController : MonoBehaviour
         _txtLobbyName.text = lobby.Name;
         RefreshPlayers(lobby);
         _updateLobbyDataButton.SetActive(ServiceController.Instance.IsPlayerHostOfJoinedLobby);
+        _startGameButton.SetActive(ServiceController.Instance.IsPlayerHostOfJoinedLobby);
         _lobbyDataPanel.RefreshPanel();
     }
 
@@ -67,6 +75,8 @@ public class LobbyScreenController : MonoBehaviour
     public void StartOnClick()
     {
         if (ServiceController.Instance.IsPlayerHostOfJoinedLobby)
+        {
             ServiceController.Instance.StartGame();
+        }
     }
 }

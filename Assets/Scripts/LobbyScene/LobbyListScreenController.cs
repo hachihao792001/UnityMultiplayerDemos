@@ -42,6 +42,18 @@ public class LobbyListScreenController : MonoBehaviour
     {
         if (ServiceController.IsInitialized)
             RefreshLobbiesListUI();
+
+        CheckBackFromLobby();
+    }
+    async void CheckBackFromLobby()
+    {
+        if (PlayerPrefs.GetInt(ServiceController.BackFromGameplayPlayerPrefKey) == 1)
+        {
+            OnJoinedLobby(ServiceController.joinedLobby);
+            await ServiceController.Instance.JoinLobbyStopPlaying();
+
+            PlayerPrefs.SetInt(ServiceController.BackFromGameplayPlayerPrefKey, 0);
+        }
     }
 
     void UpdatePlayerDataUI()
