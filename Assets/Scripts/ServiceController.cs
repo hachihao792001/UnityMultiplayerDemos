@@ -26,8 +26,9 @@ public class ServiceController : MonoSingleton<ServiceController>
     public const string LobbySceneName = "Lobby";
     public const string GameplaySceneName = "Gameplay";
 
-    public const string LobbyStartPlayingDataKey = "StartPlaying";
-    public const string LobbyStartedDataKey = "LobbyStarted";
+    public const string LobbyStartingDataKey = "LobbyStarting"; //để báo hiện màn hình Starting
+    public const string LobbyStartedDataKey = "LobbyStarted";   //để báo chuyển qua scene gameplay
+    public const string LobbyPlayingDataKey = "LobbyPlaying";   //để báo lobby đang chơi và không vào được
     public const string JoinCodeDataKey = "JoinCode";
     public const string PlayerNameDataKey = "PlayerName";
     public const string PlayerColorDataKey = "PlayerColor";
@@ -87,7 +88,7 @@ public class ServiceController : MonoSingleton<ServiceController>
 
         onLobbyUpdated += (_) =>
         {
-            CheckJoinedLobbyStartPlayingAndShowStartingScreen();
+            CheckJoinedLobbyStarting();
             CheckJoinedLobbyStartedAndStartGameplay();
         };
     }
@@ -155,7 +156,10 @@ public class ServiceController : MonoSingleton<ServiceController>
             {
                 Filters = new List<QueryFilter>
                 {
-                    new QueryFilter(QueryFilter.FieldOptions.AvailableSlots, "0", QueryFilter.OpOptions.GT)
+                    new QueryFilter(QueryFilter.FieldOptions.AvailableSlots, "0", QueryFilter.OpOptions.GT),
+                    //N1 là LobbyPlayingDataKey, xem hàm CreateLobby
+                    //tìm những lobby đang không chơi
+                    new QueryFilter(QueryFilter.FieldOptions.N1, "0", QueryFilter.OpOptions.EQ)
                 },
                 Order = new List<QueryOrder>
                 {
@@ -195,8 +199,9 @@ public class ServiceController : MonoSingleton<ServiceController>
                 Data = new Dictionary<string, DataObject>
                 {
                     { JoinCodeDataKey, new DataObject (DataObject.VisibilityOptions.Member, "") },
-                    { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
-                    { LobbyStartPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") }
+                    { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Member, "0") },
+                    { LobbyStartingDataKey, new DataObject(DataObject.VisibilityOptions.Member, "0") },
+                    { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0", DataObject.IndexOptions.N1) }
                 }
             };
 
@@ -294,7 +299,7 @@ public class ServiceController : MonoSingleton<ServiceController>
             {
                 Data = new Dictionary<string, DataObject>
                 {
-                    { LobbyStartPlayingDataKey, new DataObject (DataObject.VisibilityOptions.Public, "1") },
+                    { LobbyStartingDataKey, new DataObject (DataObject.VisibilityOptions.Member, "1") },
                 }
             });
 
@@ -319,8 +324,9 @@ public class ServiceController : MonoSingleton<ServiceController>
                 Data = new Dictionary<string, DataObject>
                 {
                     { JoinCodeDataKey, new DataObject (DataObject.VisibilityOptions.Member, RelayHostData.JoinCode) },
-                    { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Public, "1") },
-                    { LobbyStartPlayingDataKey, new DataObject (DataObject.VisibilityOptions.Public, "0") },
+                    { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Member, "1") },
+                    { LobbyStartingDataKey, new DataObject (DataObject.VisibilityOptions.Member, "0") },
+                    { LobbyPlayingDataKey, new DataObject (DataObject.VisibilityOptions.Public, "1") },
                 }
             });
 
@@ -339,7 +345,7 @@ public class ServiceController : MonoSingleton<ServiceController>
             {
                 Data = new Dictionary<string, DataObject>
                 {
-                    { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
+                    { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Member, "0") },
                 }
             });
         }
@@ -385,14 +391,14 @@ public class ServiceController : MonoSingleton<ServiceController>
         {
             Data = new Dictionary<string, DataObject>
             {
-                { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
+                { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
             }
         });
     }
 
-    private void CheckJoinedLobbyStartPlayingAndShowStartingScreen()
+    private void CheckJoinedLobbyStarting()
     {
-        if (joinedLobby.Data[LobbyStartPlayingDataKey].Value == "1")
+        if (joinedLobby.Data[LobbyStartingDataKey].Value == "1")
         {
             if (SceneManager.GetActiveScene().name == LobbySceneName)
             {
