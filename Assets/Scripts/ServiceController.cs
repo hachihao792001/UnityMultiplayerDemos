@@ -326,7 +326,7 @@ public class ServiceController : MonoSingleton<ServiceController>
                     { JoinCodeDataKey, new DataObject (DataObject.VisibilityOptions.Member, RelayHostData.JoinCode) },
                     { LobbyStartedDataKey, new DataObject(DataObject.VisibilityOptions.Member, "1") },
                     { LobbyStartingDataKey, new DataObject (DataObject.VisibilityOptions.Member, "0") },
-                    { LobbyPlayingDataKey, new DataObject (DataObject.VisibilityOptions.Public, "1") },
+                    { LobbyPlayingDataKey, new DataObject (DataObject.VisibilityOptions.Public, "1", DataObject.IndexOptions.N1) },
                 }
             });
 
@@ -391,7 +391,7 @@ public class ServiceController : MonoSingleton<ServiceController>
         {
             Data = new Dictionary<string, DataObject>
             {
-                { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0") },
+                { LobbyPlayingDataKey, new DataObject(DataObject.VisibilityOptions.Public, "0", DataObject.IndexOptions.N1) },
             }
         });
     }
